@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bookmarklets</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --border: #333;
+            --text-main: #e0e0e0;
+            --text-dim: #a0a0a0;
+            --accent: #0a84ff;
+            --code-bg: #0d0d0d;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text-main);
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            line-height: 1.5;
+        }
+        h1 { font-weight: 200; text-align: center; margin-bottom: 10px; font-size: 2.5rem; }
+        .subtitle { 
+            text-align: center; 
+            color: var(--accent); 
+            margin-bottom: 50px; 
+            font-size: 1.1em;
+            font-weight: 500;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 60px;
+        }
+
+        /* CARD WRAPPER */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: #555; }
+
+        /* HEADER LINK (Draggable Area) */
+        a.bookmarklet-link {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px 20px;
+            background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            text-decoration: none;
+            color: #fff;
+            cursor: grab;
+            transition: background 0.2s;
+        }
+        a.bookmarklet-link:hover {
+            background: rgba(10, 132, 255, 0.1);
+        }
+        a.bookmarklet-link:active {
+            cursor: grabbing;
+            background: rgba(10, 132, 255, 0.2);
+        }
+        a.bookmarklet-link.locked {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: auto;
+        }
+        a.bookmarklet-link.locked:hover {
+            background: rgba(255, 0, 0, 0.05);
+            border-color: #552222;
+        }
+
+        /* INLINE SVG STYLING */
+        .icon-box {
+            width: 42px; height: 42px;
+            background: rgba(255,255,255,0.05);
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 24px 24px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: #fff; /* For SVGs using currentColor */
+        }
+        
+        .no-icon { font-size: 20px; color: #555; }
+
+        .card-title {
+            font-weight: 600;
+            font-size: 1.1em;
+            color: #fff;
+        }
+
+        .card-body {
+            padding: 20px;
+            color: var(--text-dim);
+            font-size: 0.9em;
+            line-height: 1.4;
+            flex-grow: 1;
+            white-space: pre-line;
+        }
+
+        .token-section {
+            padding: 0 20px 10px;
+        }
+        .token-input {
+            width: 100%;
+            padding: 8px 10px;
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-main);
+            font-size: 0.85em;
+            font-family: monospace;
+            outline: none;
+            box-sizing: border-box;
+        }
+        .token-input:focus { border-color: var(--accent); }
+        .token-input::placeholder { color: #555; }
+        .token-desc {
+            display: block;
+            font-size: 0.8em;
+            color: #777;
+            margin-top: 6px;
+            line-height: 1.3;
+        }
+        .token-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.95em;
+        }
+        .token-link:hover { text-decoration: underline; }
+
+        /* CODE BLOCK */
+        .code-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-top: 60px;
+        }
+        .code-header {
+            background: #252525;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .code-title { font-weight: 600; font-size: 0.9em; color: var(--text-dim); }
+        
+        .copy-btn {
+            background: #333;
+            border: 1px solid #444;
+            color: #ccc;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .copy-btn:hover { background: #444; color: white; }
+        .copy-btn.copied { background: #198754; color: white; border-color: #198754; }
+
+        .code-viewer {
+            position: relative;
+            max-height: 500px;
+            background: var(--code-bg);
+            overflow: auto;
+        }
+        
+        pre { margin: 0; padding: 20px; font-family: "Fira Code", monospace; font-size: 13px; line-height: 1.6; }
+        code { color: #d4d4d4; }
+
+        /* SYNTAX */
+        .syn-sel { color: #d7ba7d; }
+        .syn-prop { color: #9cdcfe; }
+        .syn-val { color: #ce9178; }
+        .syn-imp { color: #c586c0; }
+        .syn-com { color: #6a9955; }
+        .syn-url { color: #569cd6; }
+
+        footer { margin-top: 60px; text-align: center; color: #444; font-size: 0.8em; }
+    </style>
+</head>
+<body>
+
+    <h1>Bookmarklets</h1>
+    <div class="subtitle">Drag the Header (Icon + Name) to your bookmarks toolbar</div>
+
+    <div class="grid">
+        {{CARDS}}
+    </div>
+
+    <div class="code-section">
+        <div class="code-header">
+            <div class="code-title">userChrome.css for Firefox</div>
+            <button class="copy-btn" onclick="copyCode(this)">Copy CSS</button>
+        </div>
+        <div class="code-viewer">
+            <pre><code id="css-code">{{CSS_CONTENT}}</code></pre>
+        </div>
+    </div>
+
+    <footer>Updated: {{DATE}}</footer>
+
+<script>
+    function highlightCSS() {
+        const el = document.getElementById('css-code');
+        let html = el.innerText;
+        
+        // Escape HTML
+        html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        
+        // 1. Comments
+        html = html.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="syn-com">$1</span>');
+        
+        // 2. Selectors (start of line or after })
+        html = html.replace(/(^|\})([^{]+)(?=\{)/g, '$1<span class="syn-sel">$2</span>');
+        
+        // 3. !important
+        html = html.replace(/(!important)/g, '<span class="syn-imp">$1</span>');
+        
+        // 4. Highlight 'url' keyword, ignoring content inside
+        html = html.replace(/(url)(\()/g, '<span class="syn-url">$1</span>$2');
+
+        el.innerHTML = html;
+    }
+
+    function copyCode(btn) {
+        const code = document.getElementById('css-code').innerText;
+        navigator.clipboard.writeText(code).then(() => {
+            const original = btn.innerText;
+            btn.innerText = "Copied!";
+            btn.classList.add('copied');
+            setTimeout(() => {
+                btn.innerText = original;
+                btn.classList.remove('copied');
+            }, 2000);
+        });
+    }
+
+    // Token input: inject API token into bookmarklet href before dragging.
+    // Dragging is blocked until a token is entered.
+    document.querySelectorAll('.token-input').forEach(input => {
+        const card = input.closest('.card');
+        const link = card.querySelector('.bookmarklet-link');
+        if (!link || !link.dataset.token) return;
+        const placeholder = link.dataset.token;
+        link.dataset.originalHref = link.getAttribute('href');
+        link.classList.add('locked');
+        const update = () => {
+            const token = input.value.trim();
+            const orig = link.dataset.originalHref;
+            if (token) {
+                link.setAttribute('href',
+                    orig.split(placeholder).join(token));
+                link.classList.remove('locked');
+            } else {
+                link.setAttribute('href', orig);
+                link.classList.add('locked');
+            }
+        };
+        input.addEventListener('input', update);
+    });
+
+    // Drag-to-bookmark: set proper data flavors so the bookmark gets the
+    // right URL AND the right name (not the SVG/whitespace textContent).
+    // Token-locked links cannot be dragged.
+    document.querySelectorAll('a.bookmarklet-link').forEach(a => {
+        a.addEventListener('click', e => e.preventDefault());
+        a.addEventListener('dragstart', e => {
+            if (a.classList.contains('locked')) {
+                e.preventDefault();
+                return;
+            }
+            const url = a.href;
+            e.dataTransfer.setData('text/uri-list', url);
+            e.dataTransfer.setData('text/plain', url);
+            e.dataTransfer.effectAllowed = 'copy';
+        });
+    });
+
+    highlightCSS();
+</script>
+</body>
+</html>

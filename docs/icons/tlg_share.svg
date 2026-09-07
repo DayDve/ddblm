@@ -1,0 +1,5 @@
+<svg width="24" height="24" version="1.1" viewBox="0 0 6.3 6.4" xmlns="http://www.w3.org/2000/svg">
+ <path d="m-6.9-4.4h4.5v0.95h-4.5z" stroke-linecap="square" stroke-width="15" style="paint-order:markers fill stroke"/>
+ <circle transform="rotate(44)" cx="4.5" cy=".096" r="2.9" fill="#2da8e5" style="paint-order:markers fill stroke"/>
+ <path d="m4.8 1.5-1.4 3.7-0.95-1.3-1.4-0.9z" fill="#fff" stroke-linecap="square" stroke-linejoin="bevel" stroke-width=".1" style="paint-order:markers fill stroke"/>
+</svg>

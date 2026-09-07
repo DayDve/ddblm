@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" version="1.1" viewBox="0 0 24 24">
+    <path d="m4 1.4c-0.88 0-1.6 0.72-1.6 1.6v14h1.2v-14a0.4 0.4 0 0 1 0.4-0.4h12v-1.2zm4 4c-0.88 0-1.6 0.72-1.6 1.6v14c0 0.88 0.72 1.6 1.6 1.6h11c0.88 0 1.6-0.72 1.6-1.6v-14c0-0.88-0.72-1.6-1.6-1.6zm0 1.2h11a0.4 0.4 0 0 1 0.4 0.4v14a0.4 0.4 0 0 1-0.4 0.4h-11a0.4 0.4 0 0 1-0.4-0.4v-14a0.4 0.4 0 0 1 0.4-0.4z" fill="#fff" opacity=".85"/>
+    <line x1="14" x2="14" y1="8" y2="20" opacity=".85" stroke="#fff" stroke-width="1.1"/>
+    <line x1="7.5" x2="20" y1="14" y2="14" opacity=".85" stroke="#fff" stroke-width="1.1"/>
+</svg>

@@ -1,0 +1,825 @@
+#!/usr/bin/env python3
+"""BLM — Bookmarklet Manager.
+
+Builds bookmarklet gallery (HTML) and Firefox userChrome.css from JS sources.
+
+Commands:
+  build        Build index.html + bookmarks_panel.css
+  list         List all bookmarklets
+  add <name>   Create new bookmarklet from template
+  edit <name>  Edit bookmarklet source
+  rm <name>    Delete bookmarklet
+  config       Manage config (print / set <k> <v> / get <k> / reset <k>)
+  patchff      Patch Firefox profile (symlink CSS + icons, update userChrome.css)
+  get          git pull
+  put [-m MSG] build + git add + commit + push
+"""
+
+import sys
+import os
+import json
+import re
+import html
+import shutil
+import subprocess
+import argparse
+import urllib.parse
+from pathlib import Path
+from datetime import datetime
+
+# ─── Paths ───────────────────────────────────────────────────────────────────
+
+ROOT = Path(__file__).parent.resolve()
+SRC_DIR = ROOT / 'src'
+ICON_DIR = ROOT / 'icons'
+DOCS_DIR = ROOT / 'docs'
+TEMPLATES_DIR = ROOT / 'templates'
+
+CONFIG_DIR = Path.home() / '.config' / 'blm'
+CONFIG_FILE = CONFIG_DIR / 'config.json'
+
+CSS_FILENAME = 'bookmarks_panel.css'
+CSS_BUILD_PATH = DOCS_DIR / CSS_FILENAME
+
+DEFAULTS = {
+    "editor": os.environ.get("EDITOR", "nano"),
+    "author": os.environ.get("USER", "Anonymous"),
+    "ff_profile": "",
+}
+
+# ─── Config ──────────────────────────────────────────────────────────────────
+
+def load_config():
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def get_config():
+    cfg = DEFAULTS.copy()
+    cfg.update(load_config())
+    return cfg
+
+
+def save_config(data):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+# ─── JS Tokenizer & Minifier ─────────────────────────────────────────────────
+#
+# The tokenizer correctly distinguishes:
+#   - String literals:  "..."  '...'
+#   - Template literals: `...` (including nested ${...} expressions)
+#   - Regex literals:   /.../flags
+#   - Comments:         //...  /*...*/
+#
+# This is necessary because naive regex-based minifiers confuse `//` inside
+# strings/templates/regex with line comments, and `/*` inside regex with block
+# comments, producing broken output.
+
+_KEYWORDS = {
+    'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+    'default', 'delete', 'do', 'else', 'export', 'extends', 'finally',
+    'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'of',
+    'return', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var',
+    'void', 'while', 'with', 'yield', 'await', 'let', 'async', 'static',
+    'true', 'false', 'null', 'undefined',
+}
+
+# Keywords after which `/` begins a regex (not division)
+_REGEX_KEYWORDS = {
+    'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete',
+    'void', 'throw', 'case', 'do', 'else', 'yield', 'await',
+}
+
+
+def _is_word_char(c):
+    return c.isalnum() or c == '_' or c == '$'
+
+
+def _read_string(code, i, quote):
+    """Read string literal starting at i (pointing at opening quote).
+    Returns (text, end_index)."""
+    n = len(code)
+    start = i
+    i += 1
+    while i < n:
+        c = code[i]
+        if c == '\\':
+            i += 2
+            continue
+        if c == quote:
+            i += 1
+            break
+        if c == '\n':
+            break  # Unterminated string — bail
+        i += 1
+    return code[start:i], i
+
+
+def _read_template(code, i):
+    """Read template literal starting at i (pointing at backtick).
+    Returns (text, end_index)."""
+    n = len(code)
+    start = i
+    i += 1  # skip `
+    while i < n:
+        c = code[i]
+        if c == '\\':
+            i += 2
+            continue
+        if c == '`':
+            i += 1
+            break
+        if c == '$' and i + 1 < n and code[i + 1] == '{':
+            i += 2
+            i = _skip_balanced(code, i)
+        else:
+            i += 1
+    return code[start:i], i
+
+
+def _skip_balanced(code, i):
+    """Skip from i until matching `}` (tracking nested braces, strings,
+    templates, and comments inside `${...}` expressions).
+    Returns position after the closing `}`."""
+    n = len(code)
+    depth = 1
+    while i < n and depth > 0:
+        c = code[i]
+        if c == '\\':
+            i += 2
+            continue
+        if c == '{':
+            depth += 1
+            i += 1
+        elif c == '}':
+            depth -= 1
+            i += 1
+        elif c == '"' or c == "'":
+            _, i = _read_string(code, i, c)
+        elif c == '`':
+            _, i = _read_template(code, i)
+        elif c == '/' and i + 1 < n and code[i + 1] == '/':
+            while i < n and code[i] != '\n':
+                i += 1
+        elif c == '/' and i + 1 < n and code[i + 1] == '*':
+            i += 2
+            while i < n - 1 and not (code[i] == '*' and code[i + 1] == '/'):
+                i += 1
+            i = min(i + 2, n)
+        else:
+            i += 1
+    return i
+
+
+def _read_regex(code, i):
+    """Read regex literal starting at i (pointing at opening `/`).
+    Returns (text, end_index)."""
+    n = len(code)
+    start = i
+    i += 1
+    in_class = False
+    while i < n:
+        c = code[i]
+        if c == '\\':
+            i += 2
+            continue
+        if c == '[':
+            in_class = True
+        elif c == ']':
+            in_class = False
+        elif c == '/' and not in_class:
+            i += 1
+            while i < n and code[i].isalpha():
+                i += 1  # flags
+            break
+        elif c == '\n':
+            break  # Invalid regex — bail
+        i += 1
+    return code[start:i], i
+
+
+def _is_regex_context(prev_type, prev_text):
+    """Determine if `/` at current position starts a regex or division."""
+    if prev_type is None:
+        return True
+    if prev_type == 'punct':
+        # After `)` or `]`, `/` is division. After other punctuation, regex.
+        return prev_text not in (')', ']')
+    if prev_type == 'keyword':
+        return prev_text in _REGEX_KEYWORDS
+    # After word (identifier) or string/regex — division
+    return False
+
+
+def _tokenize(code):
+    """Tokenize JS into list of (type, text) pairs.
+
+    Types: 'string', 'template', 'regex', 'comment', 'word', 'keyword', 'punct'
+    """
+    tokens = []
+    i = 0
+    n = len(code)
+    prev_type = None
+    prev_text = ''
+
+    while i < n:
+        c = code[i]
+
+        # Whitespace
+        if c in ' \t\n\r\f\v':
+            i += 1
+            continue
+
+        # Line comment
+        if c == '/' and i + 1 < n and code[i + 1] == '/':
+            start = i
+            while i < n and code[i] != '\n':
+                i += 1
+            tokens.append(('comment', code[start:i]))
+            continue
+
+        # Block comment
+        if c == '/' and i + 1 < n and code[i + 1] == '*':
+            start = i
+            i += 2
+            while i < n - 1:
+                if code[i] == '*' and code[i + 1] == '/':
+                    i += 2
+                    break
+                i += 1
+            else:
+                i = n
+            tokens.append(('comment', code[start:i]))
+            continue
+
+        # String literal
+        if c == '"' or c == "'":
+            text, i = _read_string(code, i, c)
+            tokens.append(('string', text))
+            prev_type = 'string'
+            prev_text = text
+            continue
+
+        # Template literal
+        if c == '`':
+            text, i = _read_template(code, i)
+            tokens.append(('template', text))
+            prev_type = 'string'
+            prev_text = text
+            continue
+
+        # Regex or division
+        if c == '/' and _is_regex_context(prev_type, prev_text):
+            text, i = _read_regex(code, i)
+            tokens.append(('regex', text))
+            prev_type = 'regex'
+            prev_text = text
+            continue
+
+        # Word (identifier, keyword, number)
+        if _is_word_char(c):
+            start = i
+            while i < n and _is_word_char(code[i]):
+                i += 1
+            text = code[start:i]
+            ttype = 'keyword' if text in _KEYWORDS else 'word'
+            tokens.append((ttype, text))
+            prev_type = ttype
+            prev_text = text
+            continue
+
+        # Punctuation
+        tokens.append(('punct', c))
+        prev_type = 'punct'
+        prev_text = c
+        i += 1
+
+    return tokens
+
+
+def _escape_hash_in_string(text):
+    """Replace literal `#` with `\\x23` inside a string literal.
+
+    This prevents `#` from being interpreted as a URL fragment separator
+    when the string is embedded in a javascript: bookmarklet URL.
+    Existing escape sequences (\\...) are left untouched.
+    """
+    if '#' not in text:
+        return text
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c == '\\' and i + 1 < n:
+            out.append(text[i:i + 2])
+            i += 2
+            continue
+        if c == '#':
+            out.append('\\x23')
+        else:
+            out.append(c)
+        i += 1
+    return ''.join(out)
+
+
+def _escape_hash_in_template(text):
+    """Replace literal `#` with `\\x23` inside a template literal,
+    but NOT inside `${...}` expressions (which are copied verbatim)."""
+    if '#' not in text:
+        return text
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c == '\\':
+            out.append(text[i:i + 2])
+            i += 2
+            continue
+        if c == '$' and i + 1 < n and text[i + 1] == '{':
+            # Copy ${...} expression verbatim
+            out.append(text[i:i + 2])
+            i += 2
+            depth = 1
+            while i < n and depth > 0:
+                c = text[i]
+                if c == '\\':
+                    out.append(text[i:i + 2])
+                    i += 2
+                    continue
+                if c == '{':
+                    depth += 1
+                elif c == '}':
+                    depth -= 1
+                out.append(c)
+                i += 1
+            continue
+        if c == '#':
+            out.append('\\x23')
+        else:
+            out.append(c)
+        i += 1
+    return ''.join(out)
+
+
+def minify_js(code):
+    """Minify JS: strip comments, collapse whitespace.
+
+    Correctly handles string literals, template literals (with ${} expressions),
+    and regex literals. Replaces `#` with `\\x23` inside strings/templates to
+    avoid URL fragment issues in bookmarklets.
+
+    Returns a `javascript:` URL string.
+    """
+    tokens = _tokenize(code)
+
+    parts = []
+    prev_last = ''
+    for ttype, text in tokens:
+        if ttype == 'comment':
+            continue
+        if ttype == 'string':
+            text = _escape_hash_in_string(text)
+        elif ttype == 'template':
+            text = _escape_hash_in_template(text)
+        if parts:
+            curr_first = text[0] if text else ''
+            if _is_word_char(prev_last) and _is_word_char(curr_first):
+                parts.append(' ')
+        parts.append(text)
+        if text:
+            prev_last = text[-1]
+
+    result = ''.join(parts)
+    if not result.startswith('javascript:'):
+        result = 'javascript:' + result
+    return result
+
+
+# ─── Metadata ────────────────────────────────────────────────────────────────
+
+def parse_metadata(content, filename):
+    """Parse `// @key: value` metadata from the first lines of a bookmarklet."""
+    meta = {
+        'id': filename,
+        'label': filename,
+        'desc': '',
+        'icon': f"{filename}.svg",
+        'token': '',
+        'token_desc': '',
+        'token_link': '',
+    }
+    for line in content.splitlines():
+        if not line.startswith('// @'):
+            if line.strip() and not line.startswith('//'):
+                break
+            continue
+        parts = line[4:].split(':', 1)
+        if len(parts) == 2:
+            key = parts[0].strip().lower().replace('-', '_')
+            val = parts[1].strip()
+            if key in meta:
+                meta[key] = val
+    return meta
+
+
+# ─── SVG / CSS Helpers ───────────────────────────────────────────────────────
+
+def get_template(name):
+    tpl_path = TEMPLATES_DIR / name
+    if not tpl_path.exists():
+        print(f"Error: Template '{name}' not found.", file=sys.stderr)
+        sys.exit(1)
+    with open(tpl_path, 'r', encoding='utf-8') as f:
+        return f.read()
+
+
+def encode_svg_for_css(filepath):
+    """Encode SVG as a data URI for CSS `url(...)`."""
+    with open(filepath, 'r', encoding='utf-8') as f:
+        svg = f.read()
+    svg = re.sub(r'\s+', ' ', svg).strip()
+    encoded = urllib.parse.quote(svg, safe=" !'()*+,-./:;=?@_~")
+    return f"url('data:image/svg+xml;charset=utf-8,{encoded}')"
+
+
+def read_svg_inline(filepath):
+    """Read SVG, strip XML declaration, return inline HTML."""
+    with open(filepath, 'r', encoding='utf-8') as f:
+        svg = f.read()
+    svg = re.sub(r'<\?xml.*?\?>', '', svg, flags=re.DOTALL)
+    svg = re.sub(r'<!DOCTYPE.*?>', '', svg, flags=re.DOTALL)
+    return svg.strip()
+
+
+def generate_css(rules, selectors):
+    """Generate userChrome.css content for Firefox bookmark panel."""
+    css = "/* Generated by BLM */\n\n"
+    css += (
+        "#bhTooltip .places-tooltip-uri {"
+        " visibility: hidden !important;"
+        " max-height: 0px !important;"
+        " margin: 0 !important;"
+        " max-width: 0 !important;"
+        " }\n"
+    )
+    css += "toolbarbutton { margin: 1px !important; padding: 2px !important; }\n\n"
+    css += "\n".join(rules)
+
+    if selectors:
+        css += "\n\n/* Hide text labels */\n"
+        css += ".bookmark-item:is(\n    " + ",\n    ".join(selectors) + "\n) {\n"
+        css += "    & .toolbarbutton-text { display: none !important; }\n"
+        css += "    & image {\n"
+        css += "        width: 0 !important; height: 0 !important;\n"
+        css += "        padding: 0 0 16px 16px !important;\n"
+        css += "        background-size: contain !important;\n"
+        css += "        background-repeat: no-repeat !important;\n"
+        css += "    }\n}\n"
+
+    css += "\n#PlacesToolbarItems > toolbarseparator {\n"
+    css += "    appearance: none !important;\n"
+    css += "    background: transparent !important;\n"
+    css += "    margin-inline: 1px !important;\n"
+    css += "    display: flex !important;\n"
+    css += "    align-items: center !important;\n"
+    css += "    justify-content: center !important;\n"
+    css += "}\n"
+    css += "#PlacesToolbarItems > toolbarseparator::before {\n"
+    css += '    content: "" !important;\n'
+    css += "    display: block !important;\n"
+    css += "    width: 1px !important;\n"
+    css += "    height: 14px !important;\n"
+    css += "    background-color: white !important;\n"
+    css += "    mix-blend-mode: difference !important;\n"
+    css += "    opacity: 0.5 !important;\n"
+    css += "}\n"
+    return css
+
+
+# ─── Build ───────────────────────────────────────────────────────────────────
+
+def cmd_build(args):
+    if not SRC_DIR.exists():
+        print("Nothing to build.")
+        return
+    DOCS_DIR.mkdir(exist_ok=True)
+
+    scripts = sorted(SRC_DIR.glob('*.js'))
+    print(f"Building {len(scripts)} scripts...")
+
+    cards_html = []
+    rules_file = []
+    rules_inline = []
+    selectors = []
+
+    for script in scripts:
+        with open(script, 'r', encoding='utf-8') as f:
+            raw = f.read()
+
+        meta = parse_metadata(raw, script.stem)
+        code_href = html.escape(minify_js(raw), quote=True)
+
+        # Icon
+        src_icon = ICON_DIR / meta['icon']
+        has_icon = src_icon.exists()
+        icon_style = ''
+
+        if has_icon:
+            data_uri = encode_svg_for_css(src_icon)
+            icon_style = f' style="background-image:{data_uri}"'
+            rules_file.append(
+                f'.bookmark-item[label="{meta["label"]}"] image '
+                f'{{ background-image: url("panel-icons/{meta["icon"]}") !important; }}'
+            )
+            rules_inline.append(
+                f'.bookmark-item[label="{meta["label"]}"] image '
+                f'{{ background-image: {data_uri} !important; }}'
+            )
+        else:
+            print(f"  Warning: icon missing for {meta['icon']}")
+
+        selectors.append(f'[label="{meta["label"]}"]')
+
+        label_esc = html.escape(meta['label'])
+        desc_esc = html.escape(meta['desc'])
+        token = meta.get('token', '')
+        token_desc = meta.get('token_desc', '')
+        token_link = meta.get('token_link', '')
+
+        token_attr = f' data-token="{token}"' if token else ''
+        token_section = ''
+        if token:
+            desc_html = ''
+            if token_desc:
+                if token_link:
+                    desc_html = (
+                        f'<span class="token-desc">{html.escape(token_desc)} '
+                        f'<a href="{html.escape(token_link, quote=True)}" '
+                        f'target="_blank" rel="noopener" '
+                        f'class="token-link">получить ↗</a></span>'
+                    )
+                else:
+                    desc_html = (
+                        f'<span class="token-desc">'
+                        f'{html.escape(token_desc)}</span>'
+                    )
+            elif token_link:
+                desc_html = (
+                    f'<a href="{html.escape(token_link, quote=True)}" '
+                    f'target="_blank" rel="noopener" '
+                    f'class="token-link">Получить токен ↗</a>'
+                )
+            token_section = (
+                '<div class="token-section">'
+                '<input type="text" class="token-input" '
+                'placeholder="API токен..." '
+                'autocomplete="off" spellcheck="false">'
+                f'{desc_html}'
+                '</div>'
+            )
+
+        cards_html.append(
+            f'        <div class="card">'
+            f'<a href="{code_href}" class="bookmarklet-link" '
+            f'data-label="{label_esc}"{token_attr} title="Drag to toolbar">'
+            f'<div class="icon-box"{icon_style}></div>'
+            f'<div class="card-title">{label_esc}</div>'
+            f'</a>'
+            f'{token_section}'
+            f'<div class="card-body">{desc_esc}</div>'
+            f'</div>'
+        )
+
+    # Write CSS file (uses relative icon paths — for Firefox profile)
+    with open(CSS_BUILD_PATH, 'w', encoding='utf-8') as f:
+        f.write(generate_css(rules_file, selectors))
+
+    # Write HTML (uses inline data-URI icons — self-contained)
+    web_css = generate_css(rules_inline, selectors)
+    tpl = get_template('index.html')
+    html_out = (
+        tpl
+        .replace('{{CARDS}}', "\n".join(cards_html))
+        .replace('{{CSS_CONTENT}}', html.escape(web_css, quote=False))
+        .replace('{{DATE}}', datetime.now().strftime("%Y-%m-%d %H:%M"))
+    )
+    with open(DOCS_DIR / 'index.html', 'w', encoding='utf-8') as f:
+        f.write(html_out)
+
+    print("Build complete.")
+
+
+# ─── Source Management Commands ──────────────────────────────────────────────
+
+def cmd_list(args):
+    if not SRC_DIR.exists():
+        return
+    print(f"{'FILE':<20} {'LABEL':<30} {'ICON'}")
+    print("-" * 60)
+    for s in sorted(SRC_DIR.glob('*.js')):
+        with open(s, 'r', encoding='utf-8') as f:
+            meta = parse_metadata(f.read(), s.stem)
+        ico = "OK" if (ICON_DIR / meta['icon']).exists() else "MISSING"
+        print(f"{s.name:<20} {meta['label']:<30} {ico}")
+
+
+def cmd_add(args):
+    if not args.name:
+        return
+    SRC_DIR.mkdir(exist_ok=True)
+    tgt = SRC_DIR / f"{args.name}.js"
+    if tgt.exists():
+        print(f"Already exists: {tgt.name}")
+        return
+    label = input(f"Label [{args.name}]: ") or args.name
+    desc = input("Desc: ")
+    icon = input(f"Icon [{args.name}.svg]: ") or f"{args.name}.svg"
+    with open(tgt, 'w', encoding='utf-8') as f:
+        f.write(get_template('bookmarklet.js').format(label=label, desc=desc, icon=icon))
+    editor = get_config()['editor']
+    subprocess.call([editor, str(tgt)])
+
+
+def cmd_edit(args):
+    tgt = SRC_DIR / f"{args.name}.js"
+    if not tgt.exists():
+        print(f"Not found: {tgt.name}")
+        return
+    editor = get_config()['editor']
+    subprocess.call([editor, str(tgt)])
+
+
+def cmd_rm(args):
+    tgt = SRC_DIR / f"{args.name}.js"
+    if tgt.exists():
+        tgt.unlink()
+        print(f"Deleted: {tgt.name}")
+    else:
+        print(f"Not found: {tgt.name}")
+
+
+# ─── Config Command ──────────────────────────────────────────────────────────
+
+def cmd_config(args):
+    raw = load_config()
+    if args.action == 'print':
+        print(json.dumps(get_config(), indent=4, ensure_ascii=False))
+    elif args.action == 'set':
+        if not args.key or not args.val:
+            print("Usage: blm config set <key> <val>")
+            return
+        if args.key not in DEFAULTS:
+            print(f"Unknown key '{args.key}'. Valid: {', '.join(DEFAULTS)}")
+            return
+        raw[args.key] = args.val
+        save_config(raw)
+        print(f"Set {args.key} = {args.val}")
+    elif args.action == 'get':
+        print(get_config().get(args.key, ''))
+    elif args.action == 'reset':
+        if args.key in raw:
+            del raw[args.key]
+            save_config(raw)
+            print(f"Reset {args.key}")
+        else:
+            print(f"Key '{args.key}' not set")
+
+
+# ─── Firefox Patch ───────────────────────────────────────────────────────────
+
+def validate_ff_profile(path):
+    if not path:
+        return None
+    p = Path(path).resolve()
+    if not p.exists():
+        return None
+    if (p / 'prefs.js').exists():
+        return p / 'chrome'
+    return None
+
+
+def _ensure_symlink(src, tgt):
+    if tgt.is_symlink():
+        if tgt.resolve() == src.resolve():
+            return
+        tgt.unlink()
+    elif tgt.exists():
+        print(f"[SKIP] {tgt.name} exists and is not a symlink")
+        return
+    try:
+        tgt.symlink_to(src.resolve())
+        print(f"[LINK] {tgt.name} -> {src.name}")
+    except OSError as e:
+        print(f"[ERR] {e}")
+
+
+def cmd_patchff(args):
+    cfg = get_config()
+    chrome = validate_ff_profile(cfg.get('ff_profile'))
+    if not chrome:
+        print("Invalid profile (prefs.js not found)")
+        print(f"  Set with: blm config set ff_profile /path/to/profile")
+        return
+    chrome.mkdir(parents=True, exist_ok=True)
+    if not CSS_BUILD_PATH.exists():
+        cmd_build(None)
+
+    _ensure_symlink(ICON_DIR, chrome / 'panel-icons')
+    _ensure_symlink(CSS_BUILD_PATH, chrome / CSS_FILENAME)
+
+    uc = chrome / 'userChrome.css'
+    imp = f'@import url("{CSS_FILENAME}") screen;'
+    ct = ""
+    if uc.exists():
+        with open(uc, 'r', encoding='utf-8') as f:
+            ct = f.read()
+    if imp not in ct:
+        with open(uc, 'w', encoding='utf-8') as f:
+            f.write(f"{imp}\n{ct}")
+        print("[PATCH] userChrome.css updated")
+    else:
+        print("[OK] userChrome.css already patched")
+
+
+# ─── Git Commands ────────────────────────────────────────────────────────────
+
+def cmd_get(args):
+    subprocess.run(["git", "pull"], check=True)
+
+
+def cmd_put(args):
+    cmd_build(None)
+    subprocess.run(["git", "add", "."], check=True)
+    if subprocess.run(["git", "status", "--porcelain"],
+                      capture_output=True).stdout.strip():
+        m = args.message or input("Commit: ").strip() or "Update"
+        subprocess.run(["git", "commit", "-m", m], check=True)
+        subprocess.run(["git", "push"], check=True)
+    else:
+        print("No changes")
+
+
+# ─── Main ────────────────────────────────────────────────────────────────────
+
+def main():
+    p = argparse.ArgumentParser(description="BLM — Bookmarklet Manager")
+    sp = p.add_subparsers(dest='command', required=True)
+
+    sp.add_parser('build')
+    sp.add_parser('list')
+
+    a = sp.add_parser('add')
+    a.add_argument('name')
+
+    e = sp.add_parser('edit')
+    e.add_argument('name')
+
+    r = sp.add_parser('rm')
+    r.add_argument('name')
+
+    c = sp.add_parser('config')
+    c.add_argument('action')
+    c.add_argument('key', nargs='?')
+    c.add_argument('val', nargs='?')
+
+    sp.add_parser('patchff')
+    sp.add_parser('get')
+
+    pu = sp.add_parser('put')
+    pu.add_argument('-m', '--message')
+
+    args = p.parse_args()
+
+    cmds = {
+        'build': cmd_build,
+        'list': cmd_list,
+        'add': cmd_add,
+        'edit': cmd_edit,
+        'rm': cmd_rm,
+        'config': cmd_config,
+        'patchff': cmd_patchff,
+        'get': cmd_get,
+        'put': cmd_put,
+    }
+
+    try:
+        cmds[args.command](args)
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except Exception as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
