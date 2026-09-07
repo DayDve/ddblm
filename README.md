@@ -71,4 +71,4 @@ Stored at `~/.config/blm/config.json`:
 
 ## License
 
-Personal project — see source for details.
+[MIT](LICENSE) © DayDve.
