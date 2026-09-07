@@ -1,7 +1,9 @@
-# ddbml — Bookmarklet Manager
+# ddblm — DayDve BookmarkLet Manager
 
 A Python CLI tool that compiles JavaScript bookmarklets into `javascript:` URLs, generates a
 drag-and-drop HTML gallery, and applies custom icons/labels to the Firefox Bookmarks Toolbar.
+
+Live gallery: **https://daydve.github.io/ddblm/**
 
 ## Features
 
