@@ -4,7 +4,7 @@
 Builds bookmarklet gallery (HTML) and Firefox userChrome.css from JS sources.
 
 Commands:
-  build        Build index.html + bookmarks_panel.css
+  build        Build index.html + blm_panel.css
   list         List all bookmarklets
   add <name>   Create new bookmarklet from template
   edit <name>  Edit bookmarklet source
@@ -38,7 +38,7 @@ TEMPLATES_DIR = ROOT / 'templates'
 CONFIG_DIR = Path.home() / '.config' / 'blm'
 CONFIG_FILE = CONFIG_DIR / 'config.json'
 
-CSS_FILENAME = 'bookmarks_panel.css'
+CSS_FILENAME = 'blm_panel.css'
 CSS_BUILD_PATH = DOCS_DIR / CSS_FILENAME
 
 DEFAULTS = {
@@ -476,7 +476,7 @@ def generate_css(rules, selectors):
     css += "\n".join(rules)
 
     if selectors:
-        css += "\n\n/* Hide text labels */\n"
+        css += "\n\n/* Hide text labels (only these specific bookmarklet labels) */\n"
         css += ".bookmark-item:is(\n    " + ",\n    ".join(selectors) + "\n) {\n"
         css += "    & .toolbarbutton-text { display: none !important; }\n"
         css += "    & image {\n"
@@ -538,11 +538,11 @@ def cmd_build(args):
             data_uri = encode_svg_for_css(src_icon)
             icon_style = f' style="background-image:{data_uri}"'
             rules_file.append(
-                f'.bookmark-item[label="{meta["label"]}"] image '
+                f'.bookmark-item[label="{meta["label"]}"][scheme="javascript"] image '
                 f'{{ background-image: url("panel-icons/{meta["icon"]}") !important; }}'
             )
             rules_inline.append(
-                f'.bookmark-item[label="{meta["label"]}"] image '
+                f'.bookmark-item[label="{meta["label"]}"][scheme="javascript"] image '
                 f'{{ background-image: {data_uri} !important; }}'
             )
         else:
