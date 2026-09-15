@@ -1,5 +1,6 @@
 // @label: Show passwords
 // @desc: Показывает пароли, скрытые звездочками
+// @desc-en: Reveal passwords hidden behind asterisks
 // @icon: show-password.svg
 
 (function() {

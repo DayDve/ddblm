@@ -1,5 +1,6 @@
 // @label: WBack Machine
 // @desc: Меню для просмотра страницы в Web Archive
+// @desc-en: Menu for viewing the page in the Web Archive
 // @icon: wback_machine.svg
 
 (function() {

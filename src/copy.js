@@ -1,5 +1,6 @@
 // @label: Copy element text
 // @desc: Позволяет скопировать текст любого элемента по клику
+// @desc-en: Copy the text of any element on click
 // @icon: copy_element_text.svg
 
 (function() {

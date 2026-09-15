@@ -1,5 +1,6 @@
 // @label: Send to Telegram
 // @desc: Отправляет ссылку или выделенный текст в Telegram
+// @desc-en: Send the current page link or selected text to Telegram
 // @icon: tlg_share.svg
 
 (function() {

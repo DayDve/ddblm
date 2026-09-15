@@ -1,5 +1,6 @@
 // @label: unDisable element
 // @desc: Принудительно включает неактивные элементы на странице
+// @desc-en: Force-enable disabled elements on the page
 // @icon: selectunlock.svg
 
 (function() {

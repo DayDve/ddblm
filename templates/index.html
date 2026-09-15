@@ -200,8 +200,8 @@
 </head>
 <body>
 
-    <h1>Bookmarklets</h1>
-    <div class="subtitle">Drag the Header (Icon + Name) to your bookmarks toolbar</div>
+    <h1 data-i18n="title">Bookmarklets</h1>
+    <div class="subtitle" data-i18n="subtitle">Drag the Header (Icon + Name) to your bookmarks toolbar</div>
 
     <div class="grid">
         {{CARDS}}
@@ -209,17 +209,41 @@
 
     <div class="code-section">
         <div class="code-header">
-            <div class="code-title">userChrome.css for Firefox</div>
-            <button class="copy-btn" onclick="copyCode(this)">Copy CSS</button>
+            <div class="code-title" data-i18n="codeTitle">userChrome.css for Firefox</div>
+            <button class="copy-btn" onclick="copyCode(this)" data-i18n="copyBtn">Copy CSS</button>
         </div>
         <div class="code-viewer">
             <pre><code id="css-code">{{CSS_CONTENT}}</code></pre>
         </div>
     </div>
 
-    <footer>Updated: {{DATE}}</footer>
+    <footer><span data-i18n="updated">Updated</span>: {{DATE}}</footer>
 
 <script>
+    const I18N = {
+        title:        { en: 'Bookmarklets', ru: 'Букмарклеты' },
+        subtitle:     { en: 'Drag the Header (Icon + Name) to your bookmarks toolbar', ru: 'Перетащите заголовок (иконка + название) на панель закладок' },
+        codeTitle:    { en: 'userChrome.css for Firefox', ru: 'userChrome.css для Firefox' },
+        copyBtn:      { en: 'Copy CSS', ru: 'Копировать CSS' },
+        copied:       { en: 'Copied!', ru: 'Скопировано!' },
+        updated:      { en: 'Updated', ru: 'Обновлено' },
+        tokenPlaceholder: { en: 'API token...', ru: 'API токен...' },
+        getToken:     { en: 'Get token ↗', ru: 'Получить токен ↗' },
+    };
+    const LANG = new URLSearchParams(location.search).get('lang') === 'ru' ? 'ru' : 'en';
+    document.documentElement.lang = LANG;
+    function t(key) { return (I18N[key] || {})[LANG] || ''; }
+
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        el.textContent = t(el.dataset.i18n);
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
+    });
+    document.querySelectorAll('[data-lang]').forEach(el => {
+        el.hidden = el.dataset.lang !== LANG;
+    });
+
     function highlightCSS() {
         const el = document.getElementById('css-code');
         let html = el.innerText;
@@ -246,7 +270,7 @@
         const code = document.getElementById('css-code').innerText;
         navigator.clipboard.writeText(code).then(() => {
             const original = btn.innerText;
-            btn.innerText = "Copied!";
+            btn.innerText = t('copied');
             btn.classList.add('copied');
             setTimeout(() => {
                 btn.innerText = original;

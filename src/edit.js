@@ -1,5 +1,6 @@
 // @label: Edit mode
 // @desc: Включает designMode для редактирования текста на странице
+// @desc-en: Enable designMode to edit text on the page
 // @icon: edit_mode.svg
 
 (function() {

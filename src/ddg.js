@@ -1,5 +1,6 @@
 // @label: Search on DuckDuckGo
-// @desc: Повторяет текущий поисковой запрос (google, yandex, etc) в DuckDuckGo 
+// @desc: Повторяет текущий поисковой запрос (google, yandex, etc) в DuckDuckGo
+// @desc-en: Rerun the current search query (Google, Yandex, etc.) in DuckDuckGo 
 // @icon: duckduckgo.svg
 
 (function() {

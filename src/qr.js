@@ -1,5 +1,6 @@
 // @label: QR
 // @desc: Генерирует QR-код для текущей страницы
+// @desc-en: Generate a QR code for the current page
 // @icon: QRcode.svg
 
 (async function() {

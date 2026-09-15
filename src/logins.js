@@ -1,5 +1,6 @@
 // @label: Search logins/passwords
 // @desc: Ищет логины для сайта на BugMeNot и Google
+// @desc-en: Find logins for the site on BugMeNot and Google
 // @icon: bugmenot.svg
 
 (function() {

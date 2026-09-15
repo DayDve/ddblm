@@ -413,9 +413,11 @@ def parse_metadata(content, filename):
         'id': filename,
         'label': filename,
         'desc': '',
+        'desc_en': '',
         'icon': f"{filename}.svg",
         'token': '',
         'token_desc': '',
+        'token_desc_en': '',
         'token_link': '',
     }
     for line in content.splitlines():
@@ -552,39 +554,43 @@ def cmd_build(args):
 
         label_esc = html.escape(meta['label'])
         desc_esc = html.escape(meta['desc'])
+        desc_en_esc = html.escape(meta.get('desc_en') or meta['desc'])
         token = meta.get('token', '')
         token_desc = meta.get('token_desc', '')
+        token_desc_en = meta.get('token_desc_en', '') or token_desc
         token_link = meta.get('token_link', '')
 
         token_attr = f' data-token="{token}"' if token else ''
         token_section = ''
         if token:
-            desc_html = ''
-            if token_desc:
-                if token_link:
-                    desc_html = (
-                        f'<span class="token-desc">{html.escape(token_desc)} '
-                        f'<a href="{html.escape(token_link, quote=True)}" '
+            token_link_html = (
+                '<span data-i18n="getToken">Get token ↗</span>'
+            )
+            def _token_desc_html(desc, link):
+                if desc:
+                    if link:
+                        return (
+                            f'<span class="token-desc">{html.escape(desc)} '
+                            f'<a href="{html.escape(link, quote=True)}" '
+                            f'target="_blank" rel="noopener" '
+                            f'class="token-link">{token_link_html}</a></span>'
+                        )
+                    return f'<span class="token-desc">{html.escape(desc)}</span>'
+                if link:
+                    return (
+                        f'<a href="{html.escape(link, quote=True)}" '
                         f'target="_blank" rel="noopener" '
-                        f'class="token-link">получить ↗</a></span>'
+                        f'class="token-link">{token_link_html}</a>'
                     )
-                else:
-                    desc_html = (
-                        f'<span class="token-desc">'
-                        f'{html.escape(token_desc)}</span>'
-                    )
-            elif token_link:
-                desc_html = (
-                    f'<a href="{html.escape(token_link, quote=True)}" '
-                    f'target="_blank" rel="noopener" '
-                    f'class="token-link">Получить токен ↗</a>'
-                )
+                return ''
             token_section = (
                 '<div class="token-section">'
                 '<input type="text" class="token-input" '
-                'placeholder="API токен..." '
+                'placeholder="API token..." '
+                'data-i18n-placeholder="tokenPlaceholder" '
                 'autocomplete="off" spellcheck="false">'
-                f'{desc_html}'
+                f'<div data-lang="en" lang="en">{_token_desc_html(token_desc_en, token_link)}</div>'
+                f'<div data-lang="ru" lang="ru" hidden>{_token_desc_html(token_desc, token_link)}</div>'
                 '</div>'
             )
 
@@ -596,7 +602,10 @@ def cmd_build(args):
             f'<div class="card-title">{label_esc}</div>'
             f'</a>'
             f'{token_section}'
-            f'<div class="card-body">{desc_esc}</div>'
+            f'<div class="card-body">'
+            f'<div data-lang="en" lang="en">{desc_en_esc}</div>'
+            f'<div data-lang="ru" lang="ru" hidden>{desc_esc}</div>'
+            f'</div>'
             f'</div>'
         )
 

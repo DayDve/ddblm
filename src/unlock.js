@@ -1,5 +1,6 @@
 // @label: unlock right click
 // @desc: Снимает запрет на выделение и правый клик
+// @desc-en: Remove restrictions on selection and right-click
 // @icon: enable-rightclick.svg
 
 (function() {

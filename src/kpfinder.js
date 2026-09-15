@@ -1,8 +1,10 @@
 // @label: KPFinder
 // @desc: Поиск и просмотр фильмов с Кинопоиска
+// @desc-en: Search and browse movies from Kinopoisk
 // @icon: kinopoisk-film.svg
 // @token: __KP_TOKEN__
 // @token-desc: API-ключ для Kinopoisk Api Unofficial
+// @token-desc-en: API key for Kinopoisk Api Unofficial
 // @token-link: https://kinopoiskapiunofficial.tech/
 
 (function() {

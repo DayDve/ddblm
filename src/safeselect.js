@@ -1,5 +1,6 @@
 // @label: Safe select
 // @desc: Отключает ссылки, позволяя выделять текст на них
+// @desc-en: Disable links to allow selecting text over them
 // @icon: select_mode.svg
 
 (function() {
