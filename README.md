@@ -16,14 +16,16 @@ Click it and the script runs on the current page.
 Unlike browser extensions, a bookmarklet needs no installation, no permissions and no add-on
 store. Drag it onto the toolbar and it just works.
 
-## Why
+## About this collection
 
-Websites keep getting in the way: they block text selection and copying, hide passwords behind
-asterisks, disable buttons, restrict right-click. And simple everyday tasks — re-running the
-current search in DuckDuckGo, making a QR code for the page, finding an old copy in the Web
-Archive — normally mean hopping between sites or keeping extra extensions around.
+These bookmarklets gathered over years of browsing — no grand plan, just scripts that kept
+being useful to me. Some of them deal with sites that block right-click, text selection or
+copying, hide passwords behind asterisks or disable buttons. Others are plain conveniences:
+a QR code for the page, the current page in the Wayback Machine, re-running the search in
+DuckDuckGo, sending the page to Telegram, looking up a movie via Kinopoisk.
 
-These bookmarklets solve that kind of daily hassle with a single click from the bookmarks toolbar.
+If a site is hostile enough or I hit a one-off need, I just write another bookmarklet — that's
+what the `blm` helper is for.
 
 ## Browser support
 
