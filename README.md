@@ -18,14 +18,9 @@ store. Drag it onto the toolbar and it just works.
 
 ## About this collection
 
-These bookmarklets gathered over years of browsing — no grand plan, just scripts that kept
-being useful to me. Some of them deal with sites that block right-click, text selection or
-copying, hide passwords behind asterisks or disable buttons. Others are plain conveniences:
-a QR code for the page, the current page in the Wayback Machine, re-running the search in
-DuckDuckGo, sending the page to Telegram, looking up a movie via Kinopoisk.
-
-If a site is hostile enough or I hit a one-off need, I just write another bookmarklet — that's
-what the `blm` helper is for.
+A dozen or so bookmarklets I've gathered and rewritten over the years for my own use. No grand
+plan — each is a small, single-purpose script you run from the bookmarks toolbar. What each one
+does is in the table below.
 
 ## Browser support
 
