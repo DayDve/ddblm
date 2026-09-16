@@ -1,74 +1,118 @@
-# ddblm — DayDve BookmarkLet Manager
+# ddblm — мои букмарклеты
 
-A Python CLI tool that compiles JavaScript bookmarklets into `javascript:` URLs, generates a
-drag-and-drop HTML gallery, and applies custom icons/labels to the Firefox Bookmarks Toolbar.
+Коллекция букмарклетов, которые я собирал, писал и переписывал годами. Плюс небольшой
+CLI-хелпер (`blm`), который облегчает их разработку и сборку.
 
-Live gallery: **https://daydve.github.io/ddblm/**
+Живая галерея: **https://daydve.github.io/ddblm/**
 
-## Features
+## Что такое букмарклет
 
-- **Minify JS** → `javascript:` URLs (handles template literals, regex, comments, `#` escaping)
-- **SVG icons** → base64 data URIs + per-bookmarklet CSS rules for Firefox panel icons
-- **Gallery page** (`docs/index.html`) — dark-themed cards with drag-and-drop onto any browser's toolbar
-- **`patchff`** — symlink icons and CSS into a Firefox profile, add `@import` to `userChrome.css`
+Букмарклет — это обычная закладка браузера, в которой вместо ссылки хранится маленький
+JS-сниппет. Кликаешь по ней — и скрипт выполняется прямо на текущей странице.
 
-## Requirements
+В отличие от расширений, букмарклету не нужны установка, разрешения и магазин приложений.
+Перетащил закладку на панель — и всё работает.
 
-- Python 3.8+
-- (Optional) Firefox profile path configured via `blm config`
+## Зачем это
 
-## Quick start
+Сайты всё чаще мешают пользоваться собой по-человечески: запрещают выделять и копировать
+текст, прячут пароли за звёздочками, отключают кнопки, блокируют правый клик. А простые
+задачи — перегнать текущий поиск в DuckDuckGo, сделать QR на страницу, найти старую
+версию в Web Archive — каждый раз требуют ходить по сайтам или держать лишние расширения.
+
+Эти букмарклеты закрывают такие ежедневные задачи одним кликом с панели закладок.
+
+## Кроссбраузерность
+
+Букмарклеты — это чистый JS, поэтому работать они должны в любом браузере, где есть
+поддержка `javascript:`-закладок. Работу в хромоподобных браузерах с их «правилами
+безопасности» я не гарантирую и не проверял.
+
+Сам я пользуюсь Firefox, поэтому все дополнительные плюшки — кастомные иконки на панели
+закладок и причёсанная через `userChrome.css` панель — делались именно для него.
+
+## Как пользоваться
+
+Открой [галерею](https://daydve.github.io/ddblm/), включи панель закладок (`Ctrl+Shift+B`)
+и перетащи нужную карточку (иконка + название) на панель. Если у букмарклета есть
+API-токен — сначала впиши его в поле на карточке.
+
+Интерфейс страницы двуязычный: по умолчанию английский, `?lang=ru` — русский. Там же лежит
+готовая тема `userChrome.css` для Firefox.
+
+## Структура репозитория
+
+Главное здесь — букмарклеты в `src/*.js`. Каждый начинается с мета-комментариев
+(название, описание, иконка):
+
+```js
+// @label: Copy element text
+// @desc: Позволяет скопировать текст любого элемента по клику
+// @desc-en: Copy the text of any element on click
+// @icon: copy_element_text.svg
+```
+
+Иконки лежат в `icons/`, шаблоны для новых букмарклетов — в `templates/`.
+
+### Список букмарклетов
+
+| Файл | Название | Что делает |
+|---|---|---|
+| `copy.js` | Copy element text | Копирует текст любого элемента по клику |
+| `ddg.js` | Search on DuckDuckGo | Повторяет текущий поиск в DuckDuckGo |
+| `edit.js` | Edit mode | Включает `designMode` — редактирование текста на странице |
+| `kpfinder.js` | KPFinder | Поиск фильмов по базе Кинопоиска (нужен API-токен) |
+| `logins.js` | Search logins/passwords | Ищет логины для сайта на BugMeNot и Google |
+| `passwords.js` | Show passwords | Показывает пароли, скрытые звёздочками |
+| `qr.js` | QR | Генерирует QR-код для текущей страницы |
+| `safeselect.js` | Safe select | Отключает ссылки, чтобы можно было выделять текст |
+| `telegram.js` | Send to Telegram | Отправляет ссылку или выделенный текст в Telegram |
+| `undisable.js` | unDisable element | Принудительно включает неактивные элементы |
+| `unlock.js` | unlock right click | Снимает запрет на выделение и правый клик |
+| `wback.js` | WBack Machine | Меню Wayback Machine: архив, последняя версия, сохранить |
+
+## Хелпер `blm`
+
+`blm` — это не продукт, а мой инструмент для разработки букмарклетов: минифицирует JS
+в `javascript:` URL (понимает шаблонные литералы, регулярки и экранирует `#` для URL),
+собирает галерею и тему для Firefox, помогает создавать и править букмарклеты.
+
+Требования: Python 3.8+.
 
 ```bash
 ./blm config set ff_profile ~/.mozilla/firefox/xxxx.default-release
-./blm build           # generates docs/index.html + docs/bookmarks_panel.css
-./blm patchff         # links icons/CSS into the Firefox profile
+./blm build           # src/*.js → docs/index.html + docs/blm_panel.css
+./blm patchff         # прокинуть иконки и CSS в профиль Firefox
 ```
 
-Then open `docs/index.html` in Firefox, enable the Bookmarks Toolbar (`Ctrl+Shift+B`)
-and drag the bookmarklet cards onto it.
-
-## Commands
+### Команды
 
 ```text
-build        Build index.html + bookmarks_panel.css from src/
-list         List all bookmarklets (filename, label, icon)
-add <name>   Create a new bookmarklet from the template
-edit <name>  Open bookmarklet source in your editor
-rm <name>    Delete a bookmarklet
-config       Manage config: print / set / get / reset
-patchff      Patch Firefox profile (symlink CSS + icons, update userChrome.css)
+build        Собрать index.html + blm_panel.css из src/
+list         Список букмарклетов (файл, название, иконка)
+add <name>   Создать новый букмарклет из шаблона
+edit <name>  Открыть букмарклет в редакторе
+rm <name>    Удалить букмарклет
+config       Конфиг: print / set / get / reset
+patchff      Пропатчить профиль Firefox (симлинки + userChrome.css)
 get          git pull
 put [-m MSG] build + git add + commit + push
 ```
 
-## Bookmarklet sources
+### Конфиг
 
-| File | Label | Description |
-|---|---|---|
-| `copy.js` | Copy element text | Click any element to copy its text |
-| `ddg.js` | Search on DuckDuckGo | Re-run the current search on DuckDuckGo |
-| `edit.js` | Edit mode | Toggle `document.designMode` on/off |
-| `kpfinder.js` | KPFinder | Search Kinopoisk (requires API token) |
-| `logins.js` | Search logins/passwords | BugMeNot + Google links for the current site |
-| `passwords.js` | Show passwords | Reveal hidden password fields |
-| `qr.js` | QR | Generate a QR code for the current page |
-| `safeselect.js` | Safe select | Remove all links to enable safe text selection |
-| `telegram.js` | Send to Telegram | Share the current URL via Telegram |
-| `undisable.js` | unDisable element | Remove `disabled` attribute from clicked elements |
-| `unlock.js` | unlock right click | Remove right-click/select/copy restrictions |
-| `wback.js` | WBack Machine | Wayback Machine links (calendar / last saved / save) |
+Хранится в `~/.config/blm/config.json`:
 
-## Config
-
-Stored at `~/.config/blm/config.json`:
-
-| Key | Description |
+| Ключ | Описание |
 |---|---|
-| `ff_profile` | Path to the Firefox profile directory |
-| `editor` | Editor to open with `blm edit` (default: `$EDITOR` or `nano`) |
-| `author` | Author name for new bookmarklet templates |
+| `ff_profile` | Путь к профилю Firefox |
+| `editor` | Редактор для `blm edit` (по умолчанию `$EDITOR` или `nano`) |
+| `author` | Имя автора для новых букмарклетов |
 
-## License
+Также в репозитории есть пара отдельных утилит вне CLI: `patch_icon.py` (адаптирует
+SVG-иконки под светлую/тёмную тему Firefox) и `firefox_rdp_proxy.py` (прокси для
+Firefox Remote Debugging Protocol).
+
+## Лицензия
 
 [MIT](LICENSE) © DayDve.
